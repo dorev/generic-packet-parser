@@ -5,6 +5,27 @@
 #include <tuple>
 #include <type_traits>
 
+#define VALUE_FIELD(variable, method, type) ValueField<type, decltype(&##method)> variable(&##method);
+#define VALUE_FIELD_ENDIAN(variable, method, type) ValueField<type, decltype(&##method), true> variable(&##method);
+#define TEXT_FIELD(variable, method, maxlength) TextField<decltype(&##method)> variable(&##method, maxlength);
+#define TEXT_FIELD_ALLOW_EMPTY(variable, method, maxlength) TextField<decltype(&##method), true> variable(&##method, maxlength);
+#define FIELD_ARRAY(variable, field, sizetype) DynamicFieldArray<decltype(field), sizetype> variable(field);
+#define MULTI_FIELD2(variable, object, method, f1, f2) MultiField<object, decltype(&##method), decltype(f1), decltype(f2)> variable(&##method, f1, f2);
+#define MULTI_FIELD3(variable, object, method, f1, f2, f3) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3)> variable(&##method, f1, f2, f3);
+#define MULTI_FIELD4(variable, object, method, f1, f2, f3, f4) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4)> variable(&##method, f1, f2, f3, f4);
+#define MULTI_FIELD5(variable, object, method, f1, f2, f3, f4, f5) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5)> variable(&##method, f1, f2, f3, f4, f5);
+#define MULTI_FIELD6(variable, object, method, f1, f2, f3, f4, f5, f6) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6)> variable(&##method, f1, f2, f3, f4, f5, f6);
+#define MULTI_FIELD7(variable, object, method, f1, f2, f3, f4, f5, f6, f7) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7)> variable(&##method, f1, f2, f3, f4, f5, f6, f7);
+#define MULTI_FIELD8(variable, object, method, f1, f2, f3, f4, f5, f6, f7, f8) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7), decltype(f8)> variable(&##method, f1, f2, f3, f4, f5, f7, f8);
+#define PACKET_PARSER1(variable, f1) PacketParser<decltype(f1)> variable(f1);
+#define PACKET_PARSER2(variable, f1, f2) PacketParser<decltype(f1), decltype(f2)> variable(f1, f2);
+#define PACKET_PARSER3(variable, f1, f2, f3) PacketParser<decltype(f1), decltype(f2), decltype(f3)> variable(f1, f2, f3);
+#define PACKET_PARSER4(variable, f1, f2, f3, f4) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4)> variable(f1, f2, f3, f4);
+#define PACKET_PARSER5(variable, f1, f2, f3, f4, f5) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5)> variable(f1, f2, f3, f4, f5);
+#define PACKET_PARSER6(variable, f1, f2, f3, f4, f5, f6) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6)> variable(f1, f2, f3, f4, f5, f6);
+#define PACKET_PARSER7(variable, f1, f2, f3, f4, f5, f6, f7) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7)> variable(f1, f2, f3, f4, f5, f6, f7);
+#define PACKET_PARSER8(variable, f1, f2, f3, f4, f5, f6, f7, f8) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7), decltype(f8)> variable(f1, f2, f3, f4, f5, f6, f7, f8);
+
 namespace GenericPacketParser
 {
 
@@ -14,7 +35,7 @@ enum class FieldTypeId
 {
     TextField,
     ValueField,
-    CompoundedField,
+    MultiField,
     DynamicFieldArray
 };
 
@@ -129,14 +150,14 @@ struct ValueField
 };
 
 template <class OutputType, class SetterSignature, class... Fields>
-struct CompoundedField
+struct MultiField
 {
     using ValueType = OutputType;
     using Setter = SetterSignature;
     static constexpr size_t fieldCount = sizeof...(Fields);
-    static constexpr FieldTypeId typeId = FieldTypeId::CompoundedField;
+    static constexpr FieldTypeId typeId = FieldTypeId::MultiField;
 
-    CompoundedField(Setter setter, Fields... fields)
+    MultiField(Setter setter, Fields... fields)
         : setter(setter)
         , fields(fields...)
     {
@@ -261,12 +282,12 @@ public:
             return;
         }
 
-        // CompoundedField parsing =============================================
+        // MultiField parsing =============================================
 
-        else if constexpr (FieldType::typeId == FieldTypeId::CompoundedField)
+        else if constexpr (FieldType::typeId == FieldTypeId::MultiField)
         {
             ValueType intermediaryOutput;
-            PacketParserErrorId intermediaryError = processCompoundedField(intermediaryOutput, field, make_index_sequence<field.fieldCount>());
+            PacketParserErrorId intermediaryError = processMultiField(intermediaryOutput, field, make_index_sequence<field.fieldCount>());
 
             if (intermediaryError != PacketParserErrorId::NoError)
             {
@@ -303,11 +324,11 @@ public:
         error = PacketParserErrorId::UnhandledFieldType;
     }
 
-    template <class IntermediaryOutputType, class CompoundedFieldType, size_t... I>
-    PacketParserErrorId processCompoundedField(IntermediaryOutputType& intermediaryOutput, CompoundedFieldType& compoundedField, index_sequence<I...>)
+    template <class IntermediaryOutputType, class MultiFieldType, size_t... I>
+    PacketParserErrorId processMultiField(IntermediaryOutputType& intermediaryOutput, MultiFieldType& MultiField, index_sequence<I...>)
     {
         PacketParserErrorId error = PacketParserErrorId::NoError;
-        (processField(intermediaryOutput, get<I>(compoundedField.fields), error), ...);
+        (processField(intermediaryOutput, get<I>(MultiField.fields), error), ...);
         return error;
     }
 

@@ -58,21 +58,18 @@ int main()
     size_t l2 = 59;
 
     // Declare fields and setters
-    TextField<decltype(&MyPacket::setName)> tf(&MyPacket::setName, 16);
-    ValueField<uint32_t, decltype(&MyPacket::setValue)> vf(&MyPacket::setValue);
+    TEXT_FIELD(nameField, MyPacket::setName, 16);
+    VALUE_FIELD(valueField, MyPacket::setValue, uint32_t);
+    TEXT_FIELD_ALLOW_EMPTY(aliasField, SubPacket::setName, 16);
+    VALUE_FIELD(aliasFlags, SubPacket::setValue, uint32_t);
+    MULTI_FIELD2(aliasArrayElement, SubPacket, MyPacket::addToArray, aliasField, aliasFlags);
+    FIELD_ARRAY(aliasArray, aliasArrayElement, uint8_t);
 
-    TextField<decltype(&SubPacket::setName), true> tfsp(&SubPacket::setName, 16);
-    ValueField<uint32_t, decltype(&SubPacket::setValue), true> vfsp(&SubPacket::setValue);
-    CompoundedField<SubPacket, decltype(&MyPacket::addToArray), decltype(tfsp), decltype(vfsp)> cf(&MyPacket::addToArray, tfsp, vfsp);
-    DynamicFieldArray<decltype(cf), uint8_t> dfa(cf);
-
-    // Packet parser type
-    // Requires decltypes to properly instanciate the tuple containing the fields
-    // The ordering must be the same!
-    PacketParser<decltype(tf), decltype(vf), decltype(dfa)> pp(tf, vf, dfa);
+    // Packet parser type, order is important!
+    PACKET_PARSER3(packetParser, nameField, valueField, aliasArray);
 
     MyPacket out{"", 0};
-    PacketParserErrorId result = pp.parse(data, l2, out);
+    PacketParserErrorId result = packetParser.parse(data, l2, out);
     
     // Output MyPacket
     cout << "Parsing result: " << result << '\n';
