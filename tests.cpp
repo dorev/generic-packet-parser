@@ -1,15 +1,3 @@
-/*
-#include <gtest/gtest.h>
-
-// Demonstrate some basic assertions.
-TEST(HelloTest, BasicAssertions) {
-  // Expect two strings not to be equal.
-  EXPECT_STRNE("hello", "world");
-  // Expect equality.
-  EXPECT_EQ(7 * 6, 42);
-}
-*/
-
 #include "genericpacketparser.h"
 #include <string>
 #include <vector>
@@ -44,8 +32,8 @@ int main()
         'A', 'l', 'e', 'x', 'a', 'n', 'd', 'r', 'e', ' ', 'D', 'u', 'm', 'a', 's', 0,
         0x01, 0x01, 0x00, 0x00,
         0x04,
-            //'D', '\'', 'A', 'r', 't', 'a', 'g', 'a', 'n', 0,
-            0,
+            //'D', '\'', 'A', 'r', 't', 'a', 'g', 'a', 'n', 0,  // <-- test 0-length string
+            0,                                                  // <--'
             0x00, 0x00, 0x00, 0x01, // <-- gotta reverse endianness!
             'A', 'r', 'a', 'm', 'i', 's', 0,
             0x00, 0x00, 0x00, 0x02,
@@ -54,35 +42,34 @@ int main()
             'P', 'o', 'r', 't', 'h', 'o', 's', 0,
             0x00, 0x00, 0x00, 0x04,
     };
-    size_t l1 = 10;
-    size_t l2 = 59;
 
-    // Declare fields and setters
-    TEXT_FIELD(nameField, MyPacket::setName, 16);
-    VALUE_FIELD(valueField, MyPacket::setValue, uint32_t);
-    TEXT_FIELD_ALLOW_EMPTY(aliasField, SubPacket::setName, 16);
-    VALUE_FIELD(aliasFlags, SubPacket::setValue, uint32_t);
-    MULTI_FIELD2(aliasArrayElement, SubPacket, MyPacket::addToArray, aliasField, aliasFlags);
-    FIELD_ARRAY(aliasArray, aliasArrayElement, uint8_t);
+    size_t length = 59;
 
-    // Packet parser type, order is important!
-    PACKET_PARSER3(packetParser, nameField, valueField, aliasArray);
+    auto parser = makePacketParser(
+        TEXT_FIELD(&MyPacket::setName, 16),
+        VALUE_FIELD(&MyPacket::setValue, uint32_t),
+        DYNAMIC_ARRAY(uint8_t,
+            MULTI_FIELD(SubPacket, &MyPacket::addToArray,
+                TEXT_FIELD_ALLOW_EMPTY(&SubPacket::setName, 16),
+                VALUE_FIELD_ENDIAN(&SubPacket::setValue, uint32_t)
+            )
+        )
+    );
 
-    MyPacket out{"", 0};
-    PacketParserErrorId result = packetParser.parse(data, l2, out);
-    
+    MyPacket output{"", 0};
+    PacketParserErrorId result = parser.parse(data, length, output);
+
     // Output MyPacket
-    cout << "Parsing result: " << result << '\n';
+    cout << "Parsing result: " << result << '\n'
+         << "Name: " << output.name << '\n'
+         << "Value: " << output.value << '\n'
+         << "Array content:\n";
 
-    cout << "Name: " << out.name << '\n'
-        << "Value: " << out.value << '\n';
-
-    cout << "Array content:\n";
     size_t i = 0;
-    for (auto& element : out.array)
+    for (auto& element : output.array)
     {
-        cout << "  " << i++ << ":\n";
-        cout << "  Name: " << element.name << '\n';
-        cout << "  Value: " << element.value << '\n';
+        cout << "  " << i++ << ":\n"
+             << "  Name: " << element.name << '\n'
+             << "  Value: " << element.value << '\n';
     }
 }

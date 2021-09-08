@@ -1,43 +1,16 @@
 #pragma once
 
 #include <iostream>
-#include <cassert>
 #include <tuple>
 #include <type_traits>
-
-#define VALUE_FIELD(variable, method, type) ValueField<type, decltype(&##method)> variable(&##method);
-#define VALUE_FIELD_ENDIAN(variable, method, type) ValueField<type, decltype(&##method), true> variable(&##method);
-#define TEXT_FIELD(variable, method, maxlength) TextField<decltype(&##method)> variable(&##method, maxlength);
-#define TEXT_FIELD_ALLOW_EMPTY(variable, method, maxlength) TextField<decltype(&##method), true> variable(&##method, maxlength);
-#define FIELD_ARRAY(variable, field, sizetype) DynamicFieldArray<decltype(field), sizetype> variable(field);
-#define MULTI_FIELD2(variable, object, method, f1, f2) MultiField<object, decltype(&##method), decltype(f1), decltype(f2)> variable(&##method, f1, f2);
-#define MULTI_FIELD3(variable, object, method, f1, f2, f3) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3)> variable(&##method, f1, f2, f3);
-#define MULTI_FIELD4(variable, object, method, f1, f2, f3, f4) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4)> variable(&##method, f1, f2, f3, f4);
-#define MULTI_FIELD5(variable, object, method, f1, f2, f3, f4, f5) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5)> variable(&##method, f1, f2, f3, f4, f5);
-#define MULTI_FIELD6(variable, object, method, f1, f2, f3, f4, f5, f6) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6)> variable(&##method, f1, f2, f3, f4, f5, f6);
-#define MULTI_FIELD7(variable, object, method, f1, f2, f3, f4, f5, f6, f7) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7)> variable(&##method, f1, f2, f3, f4, f5, f6, f7);
-#define MULTI_FIELD8(variable, object, method, f1, f2, f3, f4, f5, f6, f7, f8) MultiField<object, decltype(&##method), decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7), decltype(f8)> variable(&##method, f1, f2, f3, f4, f5, f7, f8);
-#define PACKET_PARSER1(variable, f1) PacketParser<decltype(f1)> variable(f1);
-#define PACKET_PARSER2(variable, f1, f2) PacketParser<decltype(f1), decltype(f2)> variable(f1, f2);
-#define PACKET_PARSER3(variable, f1, f2, f3) PacketParser<decltype(f1), decltype(f2), decltype(f3)> variable(f1, f2, f3);
-#define PACKET_PARSER4(variable, f1, f2, f3, f4) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4)> variable(f1, f2, f3, f4);
-#define PACKET_PARSER5(variable, f1, f2, f3, f4, f5) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5)> variable(f1, f2, f3, f4, f5);
-#define PACKET_PARSER6(variable, f1, f2, f3, f4, f5, f6) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6)> variable(f1, f2, f3, f4, f5, f6);
-#define PACKET_PARSER7(variable, f1, f2, f3, f4, f5, f6, f7) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7)> variable(f1, f2, f3, f4, f5, f6, f7);
-#define PACKET_PARSER8(variable, f1, f2, f3, f4, f5, f6, f7, f8) PacketParser<decltype(f1), decltype(f2), decltype(f3), decltype(f4), decltype(f5), decltype(f6), decltype(f7), decltype(f8)> variable(f1, f2, f3, f4, f5, f6, f7, f8);
+#include <cassert>
 
 namespace GenericPacketParser
 {
 
-using namespace std;
-
-enum class FieldTypeId
-{
-    TextField,
-    ValueField,
-    MultiField,
-    DynamicFieldArray
-};
+// =============================================================================
+// Errors
+// =============================================================================
 
 enum class PacketParserErrorId
 {
@@ -51,11 +24,11 @@ enum class PacketParserErrorId
     Unknown
 };
 
-ostream& operator<<(ostream& out, PacketParserErrorId error)
+std::ostream& operator<<(std::ostream& out, PacketParserErrorId error)
 {
     switch (error)
     {
-#define ERROR_TO_STREAM(value) case PacketParserErrorId::##value: out << string(#value); break;
+#define ERROR_TO_STREAM(value) case PacketParserErrorId::##value: out << #value; break;
         ERROR_TO_STREAM(NoError);
         ERROR_TO_STREAM(InvalidText);
         ERROR_TO_STREAM(InvalidValue);
@@ -70,6 +43,10 @@ ostream& operator<<(ostream& out, PacketParserErrorId error)
     }
     return out;
 }
+
+// =============================================================================
+// Endianness inversion
+// =============================================================================
 
 template <class T, size_t TypeSize = sizeof(T)>
 struct EndiannessInverter;
@@ -112,60 +89,109 @@ struct EndiannessInverter<T, 8>
     }
 };
 
+// =============================================================================
+// Fields types
+// =============================================================================
+
+enum class FieldTypeId
+{
+    TextField,
+    ValueField,
+    MultiField,
+    DynamicFieldArray,
+    StaticFieldArray,
+    BinaryField
+};
+
+// =============================================================================
+// ValueField
+// =============================================================================
+
+template <class T, class SetterSignature, bool InvertEndianness = false>
+struct ValueField
+{
+    using ValueType = T;
+    using SetterType = SetterSignature;
+    static constexpr FieldTypeId typeId = FieldTypeId::ValueField;
+    static constexpr bool invertEndianness = InvertEndianness;
+    static const size_t length = sizeof(ValueType);
+
+    ValueField(SetterType setter)
+        : setter(setter)
+    {
+    }
+
+    const SetterType setter;
+};
+
+// =============================================================================
+// TextField
+// =============================================================================
+
 template <class SetterSignature, bool AllowEmpty = false>
 struct TextField
 {
-    using Setter = SetterSignature;
+    using SetterType = SetterSignature;
     using ValueType = char*;
     static constexpr bool allowEmpty = AllowEmpty;
     static constexpr FieldTypeId typeId = FieldTypeId::TextField;
 
-    TextField(Setter setter, int maxLength)
+    TextField(SetterType setter, size_t maxLength)
         : setter(setter)
         , length(maxLength)
     {
         assert(("Text length must be greater than 0.", length > 0));
     }
 
-    const Setter setter;
+    const SetterType setter;
     const size_t length;
 };
 
-template <class T, class SetterSignature, bool InvertEndianness = false>
-struct ValueField
-{
-    using ValueType = T;
-    using Setter = SetterSignature;
-    static constexpr FieldTypeId typeId = FieldTypeId::ValueField;
-    static constexpr bool invertEndianness = InvertEndianness;
+// =============================================================================
+// BinaryField
+// =============================================================================
 
-    ValueField(Setter setter)
+template <class PayloadSizeValueType, class SetterSignature>
+struct BinaryField
+{
+    using ValueType = const unsigned char*;
+    using SetterType = SetterSignature;
+    using PayloadSizeType = PayloadSizeValueType;
+    static constexpr FieldTypeId typeId = FieldTypeId::BinaryField;
+
+    BinaryField(SetterType setter)
         : setter(setter)
-        , length(sizeof(ValueType))
     {
     }
 
-    const Setter setter;
-    const size_t length;
+    SetterType setter;
 };
+
+// =============================================================================
+// MultiField
+// =============================================================================
 
 template <class OutputType, class SetterSignature, class... Fields>
 struct MultiField
 {
     using ValueType = OutputType;
-    using Setter = SetterSignature;
+    using SetterType = SetterSignature;
     static constexpr size_t fieldCount = sizeof...(Fields);
     static constexpr FieldTypeId typeId = FieldTypeId::MultiField;
 
-    MultiField(Setter setter, Fields... fields)
+    MultiField(SetterType setter, Fields... fields)
         : setter(setter)
         , fields(fields...)
     {
     }
 
-    Setter setter;
-    tuple<Fields...> fields;
+    SetterType setter;
+    std::tuple<Fields...> fields;
 };
+
+// =============================================================================
+// DynamicFieldArray
+// =============================================================================
 
 template <class T, class ArraySizeValueType>
 struct DynamicFieldArray
@@ -183,13 +209,39 @@ struct DynamicFieldArray
     ArrayFieldType field;
 };
 
+// =============================================================================
+// StaticFieldArray
+// =============================================================================
+
+template <class T>
+struct StaticFieldArray
+{
+    using ArrayFieldType = T;
+    using ValueType = ArrayFieldType;
+    static constexpr FieldTypeId typeId = FieldTypeId::StaticFieldArray;
+
+    StaticFieldArray(ArrayFieldType field, size_t length)
+        : field(field)
+        , length(length)
+    {
+        assert(("Static array length must be greater than 0.", length > 0));
+    }
+
+    ArrayFieldType field;
+    const size_t length;
+};
+
+// =============================================================================
+// PacketParser
+// =============================================================================
+
 template<class... Fields>
 class PacketParser
 {
 private:
     using Data = const unsigned char*;
     const static size_t _fieldCount = sizeof...(Fields);
-    tuple<Fields...> _fields;
+    std::tuple<Fields...> _fields;
     Data _data;
     size_t _length;
     size_t _offset;
@@ -211,15 +263,15 @@ public:
         _offset = 0;
         _data = data;
         _length = length;
-        return processAllFields(output, make_index_sequence<_fieldCount>());
+        return processAllFields(output, std::make_index_sequence<_fieldCount>());
     }
 
     template <class OutputType, size_t... I>
-    PacketParserErrorId processAllFields(OutputType& output, index_sequence<I...>)
+    PacketParserErrorId processAllFields(OutputType& output, std::index_sequence<I...>)
     {
         // Process all fields
         PacketParserErrorId error = PacketParserErrorId::NoError;
-        (processField(output, get<I>(_fields), error), ...);
+        (processField(output, std::get<I>(_fields), error), ...);
         return error;
     }
 
@@ -238,8 +290,7 @@ public:
     {
         using ValueType = FieldType:: template ValueType;
 
-        // ValueField parsing ==================================================
-
+        // ValueField parsing
         if constexpr (FieldType::typeId == FieldTypeId::ValueField)
         {
             if(FieldType::invertEndianness)
@@ -254,8 +305,7 @@ public:
             return;
         }
 
-        // TextField parsing ===================================================
-
+        // TextField parsing
         else if constexpr (FieldType::typeId == FieldTypeId::TextField)
         {
             size_t nullTerminatorDistance = 0;
@@ -282,12 +332,17 @@ public:
             return;
         }
 
-        // MultiField parsing =============================================
+        // Binary parsing
+        else if constexpr (FieldType::typeId == FieldTypeId::BinaryField)
+        {
+            assert(("Binary parsing not implemented yet!", false));
+        }
 
+        // MultiField parsing
         else if constexpr (FieldType::typeId == FieldTypeId::MultiField)
         {
             ValueType intermediaryOutput;
-            PacketParserErrorId intermediaryError = processMultiField(intermediaryOutput, field, make_index_sequence<field.fieldCount>());
+            PacketParserErrorId intermediaryError = processMultiField(intermediaryOutput, field, std::make_index_sequence<field.fieldCount>());
 
             if (intermediaryError != PacketParserErrorId::NoError)
             {
@@ -299,8 +354,7 @@ public:
             return;
         }
 
-        // DynamicFieldArray ===================================================
-
+        // DynamicFieldArray parsing
         else if constexpr (FieldType::typeId == FieldTypeId::DynamicFieldArray)
         {
             // Decode array size
@@ -321,14 +375,20 @@ public:
             return;
         }
 
+        // StaticFieldArray parsing
+        else if constexpr (FieldType::typeId == FieldTypeId::StaticFieldArray)
+        {
+            assert(("StaticFieldArray parsing not implemented yet!", false));
+        }
+
         error = PacketParserErrorId::UnhandledFieldType;
     }
 
     template <class IntermediaryOutputType, class MultiFieldType, size_t... I>
-    PacketParserErrorId processMultiField(IntermediaryOutputType& intermediaryOutput, MultiFieldType& MultiField, index_sequence<I...>)
+    PacketParserErrorId processMultiField(IntermediaryOutputType& intermediaryOutput, MultiFieldType& MultiField, std::index_sequence<I...>)
     {
         PacketParserErrorId error = PacketParserErrorId::NoError;
-        (processField(intermediaryOutput, get<I>(MultiField.fields), error), ...);
+        (processField(intermediaryOutput, std::get<I>(MultiField.fields), error), ...);
         return error;
     }
 
@@ -350,5 +410,80 @@ public:
         return false;
     }
 };
+
+
+// =============================================================================
+// Utilities
+// =============================================================================
+
+template<class T, class SetterSignature>
+ValueField<T, SetterSignature> makeValueField(SetterSignature setter)
+{
+    return setter;
+}
+
+#define VALUE_FIELD(setter, type) makeValueField<type>(setter)
+
+template<class T, class SetterSignature>
+ValueField<T, SetterSignature, true> makeValueFieldEndian(SetterSignature setter)
+{
+    return setter;
+}
+
+#define VALUE_FIELD_ENDIAN(setter, type) makeValueFieldEndian<type>(setter)
+
+template<class SetterSignature>
+TextField<SetterSignature> makeTextField(SetterSignature setter, size_t maxLength)
+{
+    return {setter, maxLength};
+}
+
+#define TEXT_FIELD(setter, maxLength) makeTextField(setter, maxLength)
+
+template<class SetterSignature>
+TextField<SetterSignature, true> makeTextFieldAllowEmpty(SetterSignature setter, size_t maxLength)
+{
+    return {setter, maxLength};
+}
+
+#define TEXT_FIELD_ALLOW_EMPTY(setter, maxLength) makeTextFieldAllowEmpty(setter, maxLength)
+
+template <class SizeType, class SetterSignature>
+BinaryField<SizeType, SetterSignature> makeBinaryField(SetterSignature setter)
+{
+    return setter;
+}
+
+#define BINARY_FIELD(sizeType, setter) makeBinaryField<sizeType>(setter)
+
+template <class OutputType, class SetterSignature, class... Fields>
+MultiField<OutputType, SetterSignature, Fields...> makeMultiField(SetterSignature setter, Fields... fields)
+{
+    return {setter, fields...};
+}
+
+#define MULTI_FIELD(outputType, setter, ...) makeMultiField<outputType>(setter, ##__VA_ARGS__)
+
+template <class SizeType, class FieldType>
+DynamicFieldArray<FieldType, SizeType> makeDynamicFieldArray(FieldType field)
+{
+    return field;
+}
+
+#define DYNAMIC_ARRAY(sizeType, field) makeDynamicFieldArray<sizeType>(field)
+
+template <class FieldType>
+StaticFieldArray<FieldType> makeStaticFieldArray(size_t length, FieldType field)
+{
+    return {field, length};
+}
+
+#define STATIC_ARRAY(size, field) makeStaticFieldArray(size, field)
+
+template <class... Fields>
+PacketParser<Fields...> makePacketParser(Fields... fields)
+{
+    return {fields...};
+}
 
 } // namespace GenericPacketParser
