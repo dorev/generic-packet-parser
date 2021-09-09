@@ -18,7 +18,6 @@ struct MyPacket
     string name;
     uint32_t value;
     vector<SubPacket> array;
-
     void setName(string s) { name = s; }
     void setValue(uint32_t v) { value = v; }
     void addToArray(SubPacket& sp) { array.emplace_back(sp); }

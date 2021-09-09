@@ -48,6 +48,11 @@ std::ostream& operator<<(std::ostream& out, PacketParserErrorId error)
 // Endianness inversion
 // =============================================================================
 
+/**
+* Template class used to reverse the endianness of a value.
+*
+* @note Implemented for primitives of size 2, 4 and 8. Other sizes will generate compilation errors
+*/
 template <class T, size_t TypeSize = sizeof(T)>
 struct EndiannessInverter;
 
@@ -107,6 +112,13 @@ enum class FieldTypeId
 // ValueField
 // =============================================================================
 
+/**
+* Struct use to configure a simple value field
+*
+* @tparam T Type of the value
+* @tparam SetterSignature Type of the setter that will be called to store the value
+* @tparam InvertEndianness Boolean value indicating if the endianness of the value should be inverted
+*/
 template <class T, class SetterSignature, bool InvertEndianness = false>
 struct ValueField
 {
@@ -116,18 +128,29 @@ struct ValueField
     static constexpr bool invertEndianness = InvertEndianness;
     static const size_t length = sizeof(ValueType);
 
-    ValueField(SetterType setter)
+    /**
+    * @param setter Setter used to store the parsed value
+    * @see GenericPackerParser::makeValueField
+    * @see GenericPackerParser::makeValueFieldEndian
+    */
+    ValueField(SetterSignature setter)
         : setter(setter)
     {
     }
 
-    const SetterType setter;
+    const SetterSignature setter;
 };
 
 // =============================================================================
 // TextField
 // =============================================================================
 
+/**
+* Struct used to configure a text field
+*
+* @tparam SetterSignature Type of the setter that will be called to store the parsed text
+* @tparam AllowEmpty Boolean value indicating if the text field is allowed to be empty
+*/
 template <class SetterSignature, bool AllowEmpty = false>
 struct TextField
 {
@@ -136,14 +159,20 @@ struct TextField
     static constexpr bool allowEmpty = AllowEmpty;
     static constexpr FieldTypeId typeId = FieldTypeId::TextField;
 
-    TextField(SetterType setter, size_t maxLength)
+    /**
+    * @param setter Setter used to store the parsed text
+    * @param maxLength Maximum expected length of the text field (including \0)
+    * @see GenericPackerParser::makeTextField
+    * @see GenericPackerParser::makeTextFieldAllowEmpty
+    */
+    TextField(SetterSignature setter, size_t maxLength)
         : setter(setter)
         , length(maxLength)
     {
         assert(("Text length must be greater than 0.", length > 0));
     }
 
-    const SetterType setter;
+    const SetterSignature setter;
     const size_t length;
 };
 
@@ -151,6 +180,12 @@ struct TextField
 // BinaryField
 // =============================================================================
 
+/**
+* Struct used to configure a binary field
+*
+* @tparam PayloadSizeValueType Type of the value holding the length of the binary data
+* @tparam SetterSignature Type of the setter that will be called to store the parsed value
+*/
 template <class PayloadSizeValueType, class SetterSignature>
 struct BinaryField
 {
@@ -159,18 +194,29 @@ struct BinaryField
     using PayloadSizeType = PayloadSizeValueType;
     static constexpr FieldTypeId typeId = FieldTypeId::BinaryField;
 
-    BinaryField(SetterType setter)
+    /**
+    * @param setter Setter used to store the parsed binary data
+    * @see GenericPackerParser::makeBinaryField
+    */
+    BinaryField(SetterSignature setter)
         : setter(setter)
     {
     }
 
-    SetterType setter;
+    SetterSignature setter;
 };
 
 // =============================================================================
 // MultiField
 // =============================================================================
 
+/**
+* Struct used to configure a field containing multiple subfields
+*
+* @tparam OutputType Type of the intermediary object receiving the parsed subfield values
+* @tparam SetterSignature Type of the setter that will be called to store the parsed value in the intermediary
+* @tparam Fields Subfield types
+*/
 template <class OutputType, class SetterSignature, class... Fields>
 struct MultiField
 {
@@ -179,13 +225,18 @@ struct MultiField
     static constexpr size_t fieldCount = sizeof...(Fields);
     static constexpr FieldTypeId typeId = FieldTypeId::MultiField;
 
-    MultiField(SetterType setter, Fields... fields)
+    /**
+    * @param setter Setter used to store the parsed subfields
+    * @param fields Fields to parse
+    * @see GenericPackerParser::makeBinaryField
+    */
+    MultiField(SetterSignature setter, Fields... fields)
         : setter(setter)
         , fields(fields...)
     {
     }
 
-    SetterType setter;
+    SetterSignature setter;
     std::tuple<Fields...> fields;
 };
 
@@ -238,13 +289,7 @@ struct StaticFieldArray
 template<class... Fields>
 class PacketParser
 {
-private:
     using Data = const unsigned char*;
-    const static size_t _fieldCount = sizeof...(Fields);
-    std::tuple<Fields...> _fields;
-    Data _data;
-    size_t _length;
-    size_t _offset;
 
 public:
     template<class... Fields>
@@ -265,6 +310,13 @@ public:
         _length = length;
         return processAllFields(output, std::make_index_sequence<_fieldCount>());
     }
+
+private:
+    const static size_t _fieldCount = sizeof...(Fields);
+    std::tuple<Fields...> _fields;
+    Data _data;
+    size_t _length;
+    size_t _offset;
 
     template <class OutputType, size_t... I>
     PacketParserErrorId processAllFields(OutputType& output, std::index_sequence<I...>)
@@ -409,6 +461,7 @@ public:
         }
         return false;
     }
+
 };
 
 

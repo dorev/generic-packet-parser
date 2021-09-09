@@ -42,32 +42,3 @@ PacketParserErrorId error = parser.parse(data, length, output);
 
 ...  
 ```
-
-
-
-## Supported field types
-
-### `ValueField`
-
-...
-
-### `TextField`
-
-...
-
-### `BinaryField`
-
-... *not implemented yet*
-
-### `MultiField`
-
-...
-
-### `DynamicFieldArray`
-
-...
-
-### `StaticFieldArray`
-
-... *not implemented yet*
-
