@@ -1,6 +1,8 @@
-#include "genericpacketparser.h"
+#include "gtest/gtest.h"
 #include <string>
 #include <vector>
+
+#include "genericpacketparser.h"
 
 using namespace std;
 using namespace GenericPacketParser;
@@ -28,7 +30,27 @@ struct MyPacket
     void addToArray(SubPacket& sp) { array.emplace_back(sp); }
 };
 
-int main()
+int main(int argc, char** argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+
+class Test : public ::testing::Test
+{
+};
+
+/*
+* TODO:
+* tests for each field
+*   - exceeding length
+*   - garbage data
+*   - good data!
+*
+* multiple recursive fields
+*/
+
+TEST_F(Test, Demo1)
 {
     // Data
     const unsigned char data[] =
@@ -36,8 +58,8 @@ int main()
         'A', 'l', 'e', 'x', 'a', 'n', 'd', 'r', 'e', ' ', 'D', 'u', 'm', 'a', 's', 0,
         0x01, 0x01, 0x00, 0x00,
         0x04,
-            //'D', '\'', 'A', 'r', 't', 'a', 'g', 'a', 'n', 0,  // <-- test 0-length string
-            0,                                                  // <--'
+            //'D', '\'', 'A', 'r', 't', 'a', 'g', 'a', 'n', 0,  // <-- 0 length string
+            0,                                                  // <---'
             0x00, 0x00, 0x00, 0x01, // <-- gotta reverse endianness!
             'A', 'r', 'a', 'm', 'i', 's', 0,
             0x00, 0x00, 0x00, 0x02,
@@ -76,8 +98,14 @@ int main()
              << "  Name: " << element.name << '\n'
              << "  Value: " << element.value << '\n';
     }
+}
 
-    auto parser2 = makePacketParser(STATIC_ARRAY(3, BINARY_FIELD(uint8_t, &MyPacket::setBinary)));
+TEST_F(Test, Demo2)
+{
+    MyPacket output{"", 0};
+    auto parser2 = makePacketParser(
+        STATIC_ARRAY(3, BINARY_FIELD(uint8_t, &MyPacket::setBinary)));
+
     const unsigned char data2[] =
     {
         5, 'Y', 'o', 'l', 'o', 0,
@@ -86,6 +114,5 @@ int main()
     };
 
     auto error = parser2.parse(data2, 18, output);
-    cout << error;
+    cout << error << '\n';
 }
-

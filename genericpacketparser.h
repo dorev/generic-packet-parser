@@ -484,6 +484,7 @@ private:
                 return;
             }
 
+            // Call the output setter
             (output.*(field.setter))(intermediaryOutput);
             return;
         }
