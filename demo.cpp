@@ -18,8 +18,13 @@ struct MyPacket
     string name;
     uint32_t value;
     vector<SubPacket> array;
+    vector<string> array2;
     void setName(string s) { name = s; }
     void setValue(uint32_t v) { value = v; }
+    void setBinary(const unsigned char* data, size_t length)
+    {
+        cout << "Length: " << length << "\tData: " << (const char*)data << '\n';
+    }
     void addToArray(SubPacket& sp) { array.emplace_back(sp); }
 };
 
@@ -71,4 +76,16 @@ int main()
              << "  Name: " << element.name << '\n'
              << "  Value: " << element.value << '\n';
     }
+
+    auto parser2 = makePacketParser(STATIC_ARRAY(3, BINARY_FIELD(uint8_t, &MyPacket::setBinary)));
+    const unsigned char data2[] =
+    {
+        5, 'Y', 'o', 'l', 'o', 0,
+        6, 'S', 'u', 'a', 'v', 'e', 0,
+        4, 'B', 'a', 'e', 0
+    };
+
+    auto error = parser2.parse(data2, 18, output);
+    cout << error;
 }
+

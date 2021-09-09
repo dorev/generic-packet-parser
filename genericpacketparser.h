@@ -95,6 +95,31 @@ struct EndiannessInverter<T, 8>
 };
 
 // =============================================================================
+// CountParameters
+// =============================================================================
+
+template <class Function>
+struct CountParametersImpl;
+
+template <class... Params>
+struct CountParametersImpl<void(*)(Params...)>
+{
+    static constexpr size_t value = sizeof...(Params);
+};
+
+template <class Class, class... Params>
+struct CountParametersImpl<void(Class::*)(Params...)>
+{
+    static constexpr size_t value = sizeof...(Params);
+};
+
+/**
+* Metafunction used to count the parameters of a setter signature
+*/
+template <class SetterSignature>
+constexpr size_t CountParameters = CountParametersImpl<typename SetterSignature>::value;
+
+// =============================================================================
 // Fields types
 // =============================================================================
 
@@ -185,6 +210,7 @@ struct TextField
 *
 * @tparam PayloadSizeValueType Type of the value holding the length of the binary data
 * @tparam SetterSignature Type of the setter that will be called to store the parsed value
+* @note SetterSignature is expected to have one parameter for a data pointer and a second for length
 */
 template <class PayloadSizeValueType, class SetterSignature>
 struct BinaryField
@@ -201,6 +227,7 @@ struct BinaryField
     BinaryField(SetterSignature setter)
         : setter(setter)
     {
+        assert(("Binary field setter must have two parameters: one for data and one for length", CountParameters<SetterSignature> == 2));
     }
 
     SetterSignature setter;
@@ -228,7 +255,7 @@ struct MultiField
     /**
     * @param setter Setter used to store the parsed subfields
     * @param fields Fields to parse
-    * @see GenericPackerParser::makeBinaryField
+    * @see GenericPackerParser::makeMultiField
     */
     MultiField(SetterSignature setter, Fields... fields)
         : setter(setter)
@@ -244,6 +271,12 @@ struct MultiField
 // DynamicFieldArray
 // =============================================================================
 
+/**
+* Struct used to configure a variable-size array of the specified field
+*
+* @tparam T Type of the field of the array
+* @tparam ArraySizeValueType Type of the value indicating the size of the array
+*/
 template <class T, class ArraySizeValueType>
 struct DynamicFieldArray
 {
@@ -252,6 +285,10 @@ struct DynamicFieldArray
     using ArraySizeType = ArraySizeValueType;
     static constexpr FieldTypeId typeId = FieldTypeId::DynamicFieldArray;
 
+    /**
+    * @param field Field element of array
+    * @see GenericPackerParser::makeDynamicFieldArray
+    */
     DynamicFieldArray(ArrayFieldType field)
         : field(field)
     {
@@ -264,6 +301,11 @@ struct DynamicFieldArray
 // StaticFieldArray
 // =============================================================================
 
+/**
+* Struct used to configure a fixed-size array of the specified field
+*
+* @tparam T Type of the field of the array
+*/
 template <class T>
 struct StaticFieldArray
 {
@@ -271,27 +313,42 @@ struct StaticFieldArray
     using ValueType = ArrayFieldType;
     static constexpr FieldTypeId typeId = FieldTypeId::StaticFieldArray;
 
-    StaticFieldArray(ArrayFieldType field, size_t length)
+    /**
+    * @param field Field element of array
+    * @param size Number of element in array
+    * @see GenericPackerParser::makeStaticFieldArray
+    */
+    StaticFieldArray(ArrayFieldType field, size_t size)
         : field(field)
-        , length(length)
+        , size(size)
     {
-        assert(("Static array length must be greater than 0.", length > 0));
+        assert(("Static array size must be greater than 0.", size > 0));
     }
 
     ArrayFieldType field;
-    const size_t length;
+    const size_t size;
 };
 
 // =============================================================================
 // PacketParser
 // =============================================================================
 
+/**
+* Class containing the parsing logic for the provided fields.
+*
+* @tparam Fields Field types to parse
+*/
 template<class... Fields>
 class PacketParser
 {
+public:
     using Data = const unsigned char*;
 
-public:
+    /**
+    * @tparam Fields Field types to parse
+    * @param fields Fields to parse
+    * @see GenericPackerParser::makePacketParser
+    */
     template<class... Fields>
     PacketParser(Fields... fields)
         : _fields(fields...)
@@ -301,6 +358,12 @@ public:
     {
     }
 
+    /**
+    * @tparam OutputType Receiving output struct/class type
+    * @param data Pointer to binary data to parse
+    * @param length Length of binary data to parse
+    * @param output Reference to output struct/class
+    */
     template <class OutputType>
     PacketParserErrorId parse(Data data, size_t length, OutputType& output)
     {
@@ -345,6 +408,7 @@ private:
         // ValueField parsing
         if constexpr (FieldType::typeId == FieldTypeId::ValueField)
         {
+            // Call the output setter depending on endianness
             if(FieldType::invertEndianness)
                 (output.*(field.setter))(EndiannessInverter<ValueType>::call(*(reinterpret_cast<const ValueType*>(&_data[_offset]))));
             else
@@ -376,6 +440,7 @@ private:
                 return;
             }
 
+            // Call the output setter
             (output.*(field.setter))((const ValueType)(&_data[_offset]));
 
             // Update field length to increment _offset correctly
@@ -387,7 +452,24 @@ private:
         // Binary parsing
         else if constexpr (FieldType::typeId == FieldTypeId::BinaryField)
         {
-            assert(("Binary parsing not implemented yet!", false));
+            // Decode binary data size
+            using SizeType = FieldType:: template PayloadSizeType;
+            SizeType payloadSize = (*(reinterpret_cast<const SizeType*>(&_data[_offset])));
+
+            _offset += sizeof(SizeType);
+            if ((_offset + payloadSize) > _length)
+            {
+                error = PacketParserErrorId::ExceededDataRange;
+                return;
+            }
+
+            // Call the output setter
+            (output.*(field.setter))((const ValueType)(&_data[_offset]), payloadSize);
+
+            // Update field length to increment _offset correctly
+            _offset += payloadSize;
+
+            return;
         }
 
         // MultiField parsing
@@ -430,7 +512,17 @@ private:
         // StaticFieldArray parsing
         else if constexpr (FieldType::typeId == FieldTypeId::StaticFieldArray)
         {
-            assert(("StaticFieldArray parsing not implemented yet!", false));
+            if (_offset > _length)
+            {
+                error = PacketParserErrorId::ExceededDataRange;
+                return;
+            }
+
+            // Process whole array
+            for (size_t i = 0; i < field.size; ++i)
+                processField(output, field.field, error);
+
+            return;
         }
 
         error = PacketParserErrorId::UnhandledFieldType;
@@ -461,9 +553,7 @@ private:
         }
         return false;
     }
-
 };
-
 
 // =============================================================================
 // Utilities
